@@ -1,0 +1,39 @@
+---
+title: "Untitled"
+format: html
+---
+
+## Libraries
+```{r}
+pacman::p_load(
+  "tidyverse"
+)
+
+source("main.R")
+```
+
+
+## Datal Load
+```{r}
+read_csv("sentimentdataset.csv") |> select(-(1:2)) -> dfSocial
+```
+
+```{r}
+dfSocial$Text |>
+  parallelSentiment() -> llamaSentiment
+
+llamaSentimentClean <- case_when(
+  grepl(llamaSentiment, pattern = "Positive") ~ "Positive",
+  grepl(llamaSentiment, pattern = "Negative") ~ "Negative",
+  grepl(llamaSentiment, pattern = "Other") ~ "Other",
+  T ~ "Error"
+  
+)
+
+llamaSentimentClean |> table()
+dfSocial$llama <- llamaSentimentClean
+
+dfSocial |>
+  filter(Sentiment != llama)
+```
+
