@@ -1,0 +1,4 @@
+Sentiment;count;accuracy
+negative;1001;0,79
+neutral;1430;0,09
+positive;1103;0,89

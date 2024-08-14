@@ -15,25 +15,111 @@ source("main.R")
 
 ## Datal Load
 ```{r}
-read_csv("sentimentdataset.csv") |> select(-(1:2)) -> dfSocial
+read_csv("test.csv") |>
+  rename("Sentiment" = sentiment, "Text" = text) |>
+  filter(!is.na(Sentiment)) -> dfSocial
+
+dfSocial$Sentiment |> table()
 ```
 
 ```{r}
-dfSocial$Text |>
-  parallelSentiment() -> llamaSentiment
-
-llamaSentimentClean <- case_when(
-  grepl(llamaSentiment, pattern = "Positive") ~ "Positive",
-  grepl(llamaSentiment, pattern = "Negative") ~ "Negative",
-  grepl(llamaSentiment, pattern = "Other") ~ "Other",
-  T ~ "Error"
+for (i in 1:10) {
+  ### Process the response with llama3.1
+  dfSocial$Text |>
+    parallelSentiment() -> llamaSentiment
   
-)
-
-llamaSentimentClean |> table()
-dfSocial$llama <- llamaSentimentClean
-
-dfSocial |>
-  filter(Sentiment != llama)
+  
+  ### Unify the text format
+  llamaSentimentClean <- case_when(
+    grepl(tolower(llamaSentiment), pattern = "positive") ~ "positive",
+    grepl(tolower(llamaSentiment), pattern = "negative") ~ "negative",
+    grepl(tolower(llamaSentiment), pattern = "other") ~ "neutral",
+    T ~ "na"
+  )
+  #  llamaSentimentClean |> table()
+  dfSocial$llama <- llamaSentimentClean
+  
+  
+  ### Save cases/erorrs (not classified by llama)
+  dir.create(glue("iteration{i}"))
+  dfSocial[llamaSentimentClean == "na",] |>
+    write_csv2(glue("iteration{i}/NotClassified.csv"))
+  
+  
+  ### Accuracy by sentiment
+  dfSocial |>
+    select(llama, Sentiment) |>
+    mutate(n = 1) |>
+    pivot_wider(names_from = "llama", values_from = "n") |>
+    rowwise() |>
+    mutate(across(where(is.list), .fns = ~length(.x))) |>
+    pivot_longer(values_to = "n", names_to = "llama", cols = -1) |>
+    group_by(Sentiment) |>
+    summarize(
+      count = sum(n),
+      accuracy = round(if_else(llama == Sentiment, n, 0) / sum(n), 2)
+    ) |>
+    filter(accuracy != 0) |>
+    write_csv2(glue("iteration{i}/Accuracy.csv"))
+  
+  ### Full confusion matrix
+  dfSocial |>
+    select(llama, Sentiment) |>
+    mutate(n = 1) |>
+    pivot_wider(names_from = "llama", values_from = "n") |>
+    rowwise() |>
+    mutate(across(where(is.list), .fns = ~length(.x))) |>
+    select(Sentiment, neutral, positive, negative) |>
+    ungroup() |>
+    write_csv2(glue("iteration{i}/ConfusionMatrix.csv"))
+}
 ```
+```{r}
+lapply(1:5, function(i) {
+  read_csv2(glue("iteration{i}/Accuracy.csv"))
+}) |>
+  map_df(data.frame, .id = "iteration") -> dfAccuracy
+
+dfAccuracy |>
+  mutate(jitter = row_number()) |>
+  group_by(Sentiment) |>
+  mutate(accuracy = (accuracy - mean(accuracy)) * 100) |>
+  ggplot(aes(
+    color = Sentiment,
+    y = accuracy,
+    x = jitter,
+    group = Sentiment
+  )) +
+  geom_segment(aes(
+    xend = jitter,
+    yend = 0,
+  ), size = 8) +
+  facet_wrap(~iteration, scales = "free_x") +
+  scale_x_continuous(expand = c(.2, .2)) +
+  theme(axis.text.x = element_blank()) +
+  labs(
+    x = "",
+    y = "accuracy difference (in percent points)",
+    title = str_wrap("The fluctuations in the accuracy of data classification between iterations are small (not bigger than 1% point). Furthermore, there are visible patterns of switching classification between neutral and extreme states. This may indicate so-called difficult cases (ambiguous)")
+  )
+```
+
+```{r}
+lapply(1:5, function(i) {
+  read_csv2(glue("iteration{i}/ConfusionMatrix.csv"))
+}) |>
+  map_df(data.frame, .id = "iteration") -> dfConfusion
+
+dfConfusion
+```
+
+
+
+
+
+
+
+
+
+
 
