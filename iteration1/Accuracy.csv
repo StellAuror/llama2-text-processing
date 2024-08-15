@@ -1,4 +1,4 @@
 Sentiment;count;accuracy
-negative;1001;0,78
+negative;1001;0,77
 neutral;1430;0,10
-positive;1103;0,89
+positive;1103;0,87

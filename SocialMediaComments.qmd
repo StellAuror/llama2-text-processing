@@ -72,10 +72,14 @@ for (i in 1:10) {
     select(Sentiment, neutral, positive, negative) |>
     ungroup() |>
     write_csv2(glue("iteration{i}/ConfusionMatrix.csv"))
+  
+  dfSocial |>
+    select(textID, llama, Sentiment) |>
+     write_csv2(glue("iteration{i}/IDs.csv"))
 }
 ```
 ```{r}
-lapply(1:5, function(i) {
+lapply(1:10, function(i) {
   read_csv2(glue("iteration{i}/Accuracy.csv"))
 }) |>
   map_df(data.frame, .id = "iteration") -> dfAccuracy
@@ -93,27 +97,117 @@ dfAccuracy |>
   geom_segment(aes(
     xend = jitter,
     yend = 0,
-  ), size = 8) +
-  facet_wrap(~iteration, scales = "free_x") +
+  ), size = 15) +
+  facet_wrap(~factor(iteration, levels = 1:10, ordered = T), scales = "free_x") +
   scale_x_continuous(expand = c(.2, .2)) +
-  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.x = element_blank(),
+    text = element_text(family = "Segoe UI", size = 16)
+  ) +
   labs(
     x = "",
-    y = "accuracy difference (in percent points)",
-    title = str_wrap("The fluctuations in the accuracy of data classification between iterations are small (not bigger than 1% point). Furthermore, there are visible patterns of switching classification between neutral and extreme states. This may indicate so-called difficult cases (ambiguous)")
+    y = "accuracy deviation (in percent points)",
+    title = str_wrap("The fluctuations in the accuracy of data classification between iterations are small (not bigger than 1.1% point). No clear pattern is visible, it might indicate randomization as a key factor of fluctiations.")
   )
 ```
 
 ```{r}
-lapply(1:5, function(i) {
+lapply(1:10, function(i) {
   read_csv2(glue("iteration{i}/ConfusionMatrix.csv"))
 }) |>
   map_df(data.frame, .id = "iteration") -> dfConfusion
 
-dfConfusion
+dfConfusion %>%
+  group_by(Sentiment) %>%
+  summarise(
+    sd_neutral = sd(neutral),
+    sd_positive = sd(positive),
+    sd_negative = sd(negative)
+  ) |>
+  pivot_longer(names_to = "Llama", values_to = "sd", cols = -1) |>
+  mutate(sd = round(sd, 1)) |>
+  ggplot() +
+  geom_tile(aes(
+    x = Sentiment,
+    y = Llama,
+    fill = sd
+  )) +
+  scale_fill_gradient2(low = "#fec286", mid = "#b83779", high = "#010210", midpoint = 6) +
+  theme_minimal() +
+  geom_text(aes(
+    x = Sentiment,
+    y = Llama,
+    label = sd
+  ), color = "white", size = 8, fontface = "bold") +
+  labs(
+    title = str_wrap("A large standard deviation in the case of a sentiment classified by LLama as neutral in the data set may indicate a certain type of model searching for a so-called second bottom. The smallest deviation between models occurs in the case of positive opinions classified as negative - it occured relatively hardly ever.")
+  )
+
 ```
 
+After averaging the classification results of both models and applying a cutoff function based on the hyperbolic tangent, it is observed that the results deviate significantly more from the outcomes of individual iterations. This indicates a high degree of variability (instability) in the model. Additionally, an extremely small number of cases were assigned to the neutral class.
 
+```{r}
+### Good case
+#dfSocial |>
+#  filter(textID == "0e8aa10a4e") |> pull("Text") |> cat()
+
+lapply(1:10, function(i) {
+  read_csv2(glue("iteration{i}/IDs.csv"))
+}) |>
+  map_df(data.frame, .id = "iteration") -> dfFlow
+
+dfFlow |>
+  pivot_wider(names_from = "iteration", values_from = "llama") |>
+  mutate(across(3:12, ~case_when(
+      .x == "positive" ~ 1,
+      .x == "neutral" ~ 0,
+      .x == "negative" ~ -1,
+      TRUE ~ NA
+    ))) |>
+  rowwise() |>
+  mutate(
+    avgResult = mean(c_across(where(is.numeric))),
+    avgSentiment = case_when(
+      avgResult <= tanh(-1)~ "negative",
+      avgResult >= tanh(1) ~ "positive",
+      T ~ "neutral"
+    )
+  ) -> dfFlowS
+  
+
+dfFlowS |> ggplot(aes(x = avgResult)) + 
+  geom_density() +
+  geom_vline(xintercept = tanh(-1), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = tanh(1), color = "red", linetype = "dashed")
+
+
+
+```
+
+The model has a moderate agreement (Kappa = 0.2866) and an overall accuracy of around 50%, which suggests that it does not perform better than random class assignment. The model performs better at classifying "negative" and "positive" sentiments compared to "neutral" sentiments but struggles with predicting positive sentiments and neutral classes. The p-values from McNemar's Test indicate significant differences in classification errors compared to traditional models, which may suggest a need for further analysis and potential improvements to the model.
+
+```{r}
+dfFlowS |>
+  group_by(Sentiment, avgSentiment) |>
+  summarise(n = n()) |>
+  pivot_wider(names_from = "avgSentiment", values_from = "n") |>
+  column_to_rownames(var = "Sentiment") |>
+  as.matrix() |> confusionMatrix()
+```
+
+```{r}
+dfFlowS |>
+    filter(Sentiment != avgSentiment) |>
+  inner_join(dfSocial, join_by(textID == textID)) |>
+  filter(
+    textID %in% (
+      dfFlowS |>
+      filter(Sentiment != avgSentiment) 
+    )
+  ) |>
+  select(Text, "StdModel" = Sentiment.x, avgResult, 3:12) 
+```
 
 
 
