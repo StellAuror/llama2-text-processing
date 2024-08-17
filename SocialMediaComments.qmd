@@ -3,27 +3,33 @@ title: "Untitled"
 format: html
 ---
 
-## Libraries
+# Sentiment Analysis: Llama 3.1 (7B parameters) vs. Traditional Sentiment Model
+
+## Applying LLMs Capabilities to Sentiment Evaluation
+### Libraries
 ```{r}
 pacman::p_load(
-  "tidyverse"
+  "tidyverse",
+  "caret"
 )
 
 source("main.R")
 ```
 
 
-## Datal Load
+### Test dataset
 ```{r}
-read_csv("test.csv") |>
+read_csv("data/test.csv") |>
   rename("Sentiment" = sentiment, "Text" = text) |>
   filter(!is.na(Sentiment)) -> dfSocial
 
 dfSocial$Sentiment |> table()
 ```
 
+### Llama3.1 (7B) Sentiment Evaluation (10 iterations)
 ```{r}
-for (i in 1:10) {
+if(FALSE) {
+  for (i in 1:10) {
   ### Process the response with llama3.1
   dfSocial$Text |>
     parallelSentiment() -> llamaSentiment
@@ -46,7 +52,7 @@ for (i in 1:10) {
     write_csv2(glue("iteration{i}/NotClassified.csv"))
   
   
-  ### Accuracy by sentiment
+  ### Save accuracy by sentiment
   dfSocial |>
     select(llama, Sentiment) |>
     mutate(n = 1) |>
@@ -62,7 +68,7 @@ for (i in 1:10) {
     filter(accuracy != 0) |>
     write_csv2(glue("iteration{i}/Accuracy.csv"))
   
-  ### Full confusion matrix
+  ### Save confusion matrix
   dfSocial |>
     select(llama, Sentiment) |>
     mutate(n = 1) |>
@@ -77,7 +83,13 @@ for (i in 1:10) {
     select(textID, llama, Sentiment) |>
      write_csv2(glue("iteration{i}/IDs.csv"))
 }
+}
 ```
+
+## Results Evalaution
+
+### Iteration-wise comparison
+
 ```{r}
 lapply(1:10, function(i) {
   read_csv2(glue("iteration{i}/Accuracy.csv"))
@@ -110,6 +122,8 @@ dfAccuracy |>
     title = str_wrap("The fluctuations in the accuracy of data classification between iterations are small (not bigger than 1.1% point). No clear pattern is visible, it might indicate randomization as a key factor of fluctiations.")
   )
 ```
+
+High variability of classification between model iterations indicates uncertainty of the result of a single sentence evaluation. Such a feature of LLM models may mean that sentences need to be evaluated multiple times in order to standardize the result based on multiple observations.
 
 ```{r}
 lapply(1:10, function(i) {
@@ -167,7 +181,7 @@ dfFlow |>
     ))) |>
   rowwise() |>
   mutate(
-    avgResult = mean(c_across(where(is.numeric))),
+    avgResult = round(mean(c_across(where(is.numeric)), na.rm = T), 2),
     avgSentiment = case_when(
       avgResult <= tanh(-1)~ "negative",
       avgResult >= tanh(1) ~ "positive",
@@ -175,17 +189,76 @@ dfFlow |>
     )
   ) -> dfFlowS
   
-
-dfFlowS |> ggplot(aes(x = avgResult)) + 
-  geom_density() +
-  geom_vline(xintercept = tanh(-1), color = "red", linetype = "dashed") +
-  geom_vline(xintercept = tanh(1), color = "red", linetype = "dashed")
-
-
+dfFlowS |>
+  mutate(
+    avgCertainty = if_else(abs(avgResult) >= tanh(1), "class assgined", "neutral"),
+    avgResult = if_else(abs(avgResult) == 1, as.character(avgResult), "At least partial uncertanity"),
+    avgResult = case_when(avgResult == "-1" ~ "negative", avgResult == "1" ~ "positive", T ~ avgResult)
+  ) |>
+  group_by(avgResult, avgCertainty) |>
+  summarise(n = n()) |>
+  na.omit() |>
+  ggplot(aes(x = n, y = as.factor(avgResult))) +
+  geom_col(aes(fill = factor(avgCertainty, levels = c("neutral", "class assgined")))) +
+  geom_text(aes(label = n), color = "white", size = 5.5, hjust = 1) +
+  scale_fill_manual(values = c("#cccccc", "#5662f6")) +
+  theme_minimal() +
+  labs(
+    x = "# of observations",
+    y = "",
+    fill = "Classification",
+    title = "The vast majority of "
+  )
 
 ```
 
-The model has a moderate agreement (Kappa = 0.2866) and an overall accuracy of around 50%, which suggests that it does not perform better than random class assignment. The model performs better at classifying "negative" and "positive" sentiments compared to "neutral" sentiments but struggles with predicting positive sentiments and neutral classes. The p-values from McNemar's Test indicate significant differences in classification errors compared to traditional models, which may suggest a need for further analysis and potential improvements to the model.
+```{r}
+dfFlowS |> ggplot(aes(x = avgResult)) + 
+  geom_density(size = 2, color = "#5662f6") +
+  geom_vline(xintercept = tanh(-1), color = "#6a6a6a", linetype = "dotted", size = 1) +
+  geom_vline(xintercept = tanh(1), color = "#6a6a6a", linetype = "dotted", size = 1) +
+  theme_minimal()
+```
+
+###### TEXT PLACE HOLDER ##########
+```{r}
+dfFlowS |>
+  rowwise() %>%
+  mutate(
+    resultVariance = if_else(
+      any(c_across(`1`:`10`) == 1) && any(c_across(`1`:`10`) == -1),
+      "extreme",
+      "centric"
+    ),
+    sentimentVariance = paste0(avgSentiment, " - ", resultVariance)
+  ) |> 
+  group_by(sentimentVariance, avgSentiment, resultVariance) |>
+  summarise(n = n()) |>
+  na.omit() |>
+  ggplot() +
+  geom_col(aes(
+    x = sentimentVariance,
+    y = n,
+    fill = resultVariance
+  )) + 
+  facet_wrap(~avgSentiment, scales = "free") +
+  scale_fill_manual(values = c("#272635", "#B1E5F2")) +
+  theme_minimal() +
+  theme(strip.background = element_rect(fill = "#eeeeee", color = NA)) +
+  labs(
+    x = "", 
+    y = "# of cases",
+    fill = "Varianace between iterations"
+  ) 
+  
+```
+
+### Quantitive Comparison
+
+The overall accuracy of the models is 57.67%, which suggests a moderate level of agreement between the two models. However, the Kappa statistic is 0.3764, indicating a fair level of agreement, but far from perfect. The Kappa score suggests that while there is some overlap in how both models classify sentiment, there is also a significant amount of disagreement.
+The McNemar's test P-Value is less than 2.2e-16, which strongly indicates that the discrepancies between the models are statistically significant.
+
+The analysis reveals that the two models show a reasonable level of agreement in classifying negative and positive sentiments, with the highest concordance for negative sentiments. However, there is substantial divergence when it comes to neutral sentiments, suggesting that this category is more challenging for the models to consistently agree upon. The data suggests that while the models can be somewhat reliable in distinguishing clear positive or negative sentiments, they are less effective with neutral sentiments, which could be a focus for further model refinement.
 
 ```{r}
 dfFlowS |>
@@ -196,6 +269,11 @@ dfFlowS |>
   as.matrix() |> confusionMatrix()
 ```
 
+Irony often expresses a negative sentiment using seemingly positive words, or vice versa. Analysis has shown that neutral sentiment has the lowest effectiveness in models (with low precision and recall). Irony can be classified as neutral when models fail to recognize its true tone, indicating that irony in such contexts is more challenging to detect. Llama 3.1, trained on large datasets that may include contexts where irony occurs, has the potential to better recognize subtle signals of irony, such as tone, sentence structure, or the use of specific words. However... Overinterpretation: Despite the potential benefits, LLM models may be prone to overinterpreting data. This could lead to the erroneous attribution of irony where none exists, as these models try to find subtle meanings or intentions, even if the text is straightforward and literal. With LLM models, there is a risk that they may attribute irony where it is absent, especially when they attempt to overinterpret simple statements as complex ones. This phenomenon may stem from the fact that LLMs are highly sensitive to context and may identify nuances that aren't actually present.
+
+
+## Qualitive Comparison
+
 ```{r}
 dfFlowS |>
     filter(Sentiment != avgSentiment) |>
@@ -203,13 +281,14 @@ dfFlowS |>
   filter(
     textID %in% (
       dfFlowS |>
-      filter(Sentiment != avgSentiment) 
+      filter(Sentiment != avgSentiment) |>
+        pull("textID")
     )
   ) |>
-  select(Text, "StdModel" = Sentiment.x, avgResult, 3:12) 
+  select(Text, "StdModel" = Sentiment.x, avgResult) 
 ```
 
-
+Here, the text should be analyzed, preferably using several methods: absolute classification into 3 cases, and adding a 4th category indicating those with more context.
 
 
 
