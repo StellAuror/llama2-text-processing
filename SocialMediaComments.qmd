@@ -1,13 +1,18 @@
 ---
-title: "Untitled"
+title: "Sentiment Analysis: Llama 3.1 (7B parameters) vs. Traditional Sentiment Model"
 format: html
 ---
 
-# Sentiment Analysis: Llama 3.1 (7B parameters) vs. Traditional Sentiment Model
-
 ## Applying LLMs Capabilities to Sentiment Evaluation
+
 ### Libraries
+
 ```{r}
+knitr::opts_chunk$set(
+  message = F,
+  warning = F
+)
+
 pacman::p_load(
   "tidyverse",
   "caret"
@@ -16,8 +21,8 @@ pacman::p_load(
 source("main.R")
 ```
 
-
 ### Test dataset
+
 ```{r}
 read_csv("data/test.csv") |>
   rename("Sentiment" = sentiment, "Text" = text) |>
@@ -27,8 +32,9 @@ dfSocial$Sentiment |> table()
 ```
 
 ### Llama3.1 (7B) Sentiment Evaluation (10 iterations)
+
 ```{r}
-if(FALSE) {
+if (FALSE) {
   for (i in 1:10) {
   ### Process the response with llama3.1
   dfSocial$Text |>
@@ -96,7 +102,8 @@ lapply(1:10, function(i) {
 }) |>
   map_df(data.frame, .id = "iteration") -> dfAccuracy
 
-dfAccuracy |>
+asSVG((
+ dfAccuracy |>
   mutate(jitter = row_number()) |>
   group_by(Sentiment) |>
   mutate(accuracy = (accuracy - mean(accuracy)) * 100) |>
@@ -119,8 +126,12 @@ dfAccuracy |>
   labs(
     x = "",
     y = "accuracy deviation (in percent points)",
-    title = str_wrap("The fluctuations in the accuracy of data classification between iterations are small (not bigger than 1.1% point). No clear pattern is visible, it might indicate randomization as a key factor of fluctiations.")
-  )
+    title = str_wrap("
+                     The fluctuations in the accuracy of data classification between iterations are small (not bigger than 1.1% point).
+                     No clear pattern is visible, it might indicate randomization as a key factor of fluctiations.
+                     ")
+  ) 
+))
 ```
 
 High variability of classification between model iterations indicates uncertainty of the result of a single sentence evaluation. Such a feature of LLM models may mean that sentences need to be evaluated multiple times in order to standardize the result based on multiple observations.
@@ -131,31 +142,39 @@ lapply(1:10, function(i) {
 }) |>
   map_df(data.frame, .id = "iteration") -> dfConfusion
 
-dfConfusion %>%
-  group_by(Sentiment) %>%
-  summarise(
-    sd_neutral = sd(neutral),
-    sd_positive = sd(positive),
-    sd_negative = sd(negative)
-  ) |>
-  pivot_longer(names_to = "Llama", values_to = "sd", cols = -1) |>
-  mutate(sd = round(sd, 1)) |>
-  ggplot() +
-  geom_tile(aes(
-    x = Sentiment,
-    y = Llama,
-    fill = sd
-  )) +
-  scale_fill_gradient2(low = "#fec286", mid = "#b83779", high = "#010210", midpoint = 6) +
-  theme_minimal() +
-  geom_text(aes(
-    x = Sentiment,
-    y = Llama,
-    label = sd
-  ), color = "white", size = 8, fontface = "bold") +
-  labs(
-    title = str_wrap("A large standard deviation in the case of a sentiment classified by LLama as neutral in the data set may indicate a certain type of model searching for a so-called second bottom. The smallest deviation between models occurs in the case of positive opinions classified as negative - it occured relatively hardly ever.")
-  )
+asSVG((
+  dfConfusion |>
+    group_by(Sentiment) |>
+    summarise(
+      sd_neutral = sd(neutral),
+      sd_positive = sd(positive),
+      sd_negative = sd(negative)
+    ) |>
+    pivot_longer(names_to = "Llama", values_to = "sd", cols = -1) |>
+    mutate(sd = round(sd, 1)) |>
+    ggplot() +
+    geom_tile(aes(
+      x = Sentiment,
+      y = Llama,
+      fill = sd
+    )) +
+    scale_fill_gradient2(low = "#fec286", mid = "#b83779", high = "#010210", midpoint = 6) +
+    theme_minimal() +
+    geom_text(aes(
+      x = Sentiment,
+      y = Llama,
+      label = sd
+    ), color = "white", size = 8, fontface = "bold") +
+    labs(
+      title = str_wrap("
+                       A large standard deviation in the case of a sentiment classified by LLama as neutral in the data
+                       set may indicate a certain type of model searching for a so-called second bottom.
+                       The smallest deviation between models occurs in the case of positive opinions classified
+                       as negative - it occured relatively hardly ever.
+                       ")
+    )
+), width = 8, height = 6)
+
 
 ```
 
@@ -171,7 +190,7 @@ lapply(1:10, function(i) {
 }) |>
   map_df(data.frame, .id = "iteration") -> dfFlow
 
-dfFlow |>
+  dfFlow |>
   pivot_wider(names_from = "iteration", values_from = "llama") |>
   mutate(across(3:12, ~case_when(
       .x == "positive" ~ 1,
@@ -188,41 +207,47 @@ dfFlow |>
       T ~ "neutral"
     )
   ) -> dfFlowS
-  
-dfFlowS |>
-  mutate(
-    avgCertainty = if_else(abs(avgResult) >= tanh(1), "class assgined", "neutral"),
-    avgResult = if_else(abs(avgResult) == 1, as.character(avgResult), "At least partial uncertanity"),
-    avgResult = case_when(avgResult == "-1" ~ "negative", avgResult == "1" ~ "positive", T ~ avgResult)
-  ) |>
-  group_by(avgResult, avgCertainty) |>
-  summarise(n = n()) |>
-  na.omit() |>
-  ggplot(aes(x = n, y = as.factor(avgResult))) +
-  geom_col(aes(fill = factor(avgCertainty, levels = c("neutral", "class assgined")))) +
-  geom_text(aes(label = n), color = "white", size = 5.5, hjust = 1) +
-  scale_fill_manual(values = c("#cccccc", "#5662f6")) +
-  theme_minimal() +
-  labs(
-    x = "# of observations",
-    y = "",
-    fill = "Classification",
-    title = "The vast majority of "
-  )
+
+asSVG((
+  dfFlowS |>
+    mutate(
+      avgCertainty = if_else(abs(avgResult) >= tanh(1), "class assgined", "neutral"),
+      avgResult = if_else(abs(avgResult) == 1, as.character(avgResult), "At least partial uncertanity"),
+      avgResult = case_when(avgResult == "-1" ~ "negative", avgResult == "1" ~ "positive", T ~ avgResult)
+    ) |>
+    group_by(avgResult, avgCertainty) |>
+    summarise(n = n()) |>
+    na.omit() |>
+    ggplot(aes(x = n, y = as.factor(avgResult))) +
+    geom_col(aes(fill = factor(avgCertainty, levels = c("neutral", "class assgined")))) +
+    geom_text(aes(label = n), color = "white", size = 5.5, hjust = 1) +
+    scale_fill_manual(values = c("#cccccc", "#5662f6")) +
+    theme_minimal() +
+    labs(
+      x = "# of observations",
+      y = "",
+      fill = "Classification",
+      title = "The vast majority of "
+    )
+), width = 8, height = 4)
 
 ```
 
 ```{r}
-dfFlowS |> ggplot(aes(x = avgResult)) + 
+asSVG((
+  dfFlowS |> ggplot(aes(x = avgResult)) + 
   geom_density(size = 2, color = "#5662f6") +
   geom_vline(xintercept = tanh(-1), color = "#6a6a6a", linetype = "dotted", size = 1) +
   geom_vline(xintercept = tanh(1), color = "#6a6a6a", linetype = "dotted", size = 1) +
   theme_minimal()
+), width = 9, height = 5)
 ```
 
-###### TEXT PLACE HOLDER ##########
+###### TEXT PLACE HOLDER
+
 ```{r}
-dfFlowS |>
+asSVG((
+  dfFlowS |>
   rowwise() %>%
   mutate(
     resultVariance = if_else(
@@ -237,26 +262,29 @@ dfFlowS |>
   na.omit() |>
   ggplot() +
   geom_col(aes(
-    x = sentimentVariance,
+    x = resultVariance,
     y = n,
     fill = resultVariance
   )) + 
-  facet_wrap(~avgSentiment, scales = "free") +
+  facet_wrap(~avgSentiment, scales = "free_x") +
   scale_fill_manual(values = c("#272635", "#B1E5F2")) +
   theme_minimal() +
-  theme(strip.background = element_rect(fill = "#eeeeee", color = NA)) +
+  theme(
+    strip.background = element_rect(fill = "#eeeeee", color = NA),
+    legend.position = "top"
+  ) +
   labs(
     x = "", 
     y = "# of cases",
     fill = "Varianace between iterations"
   ) 
+), width = 9, height = 5)
   
 ```
 
 ### Quantitive Comparison
 
-The overall accuracy of the models is 57.67%, which suggests a moderate level of agreement between the two models. However, the Kappa statistic is 0.3764, indicating a fair level of agreement, but far from perfect. The Kappa score suggests that while there is some overlap in how both models classify sentiment, there is also a significant amount of disagreement.
-The McNemar's test P-Value is less than 2.2e-16, which strongly indicates that the discrepancies between the models are statistically significant.
+The overall accuracy of the models is 57.67%, which suggests a moderate level of agreement between the two models. However, the Kappa statistic is 0.3764, indicating a fair level of agreement, but far from perfect. The Kappa score suggests that while there is some overlap in how both models classify sentiment, there is also a significant amount of disagreement. The McNemar's test P-Value is less than 2.2e-16, which strongly indicates that the discrepancies between the models are statistically significant.
 
 The analysis reveals that the two models show a reasonable level of agreement in classifying negative and positive sentiments, with the highest concordance for negative sentiments. However, there is substantial divergence when it comes to neutral sentiments, suggesting that this category is more challenging for the models to consistently agree upon. The data suggests that while the models can be somewhat reliable in distinguishing clear positive or negative sentiments, they are less effective with neutral sentiments, which could be a focus for further model refinement.
 
@@ -271,10 +299,10 @@ dfFlowS |>
 
 Irony often expresses a negative sentiment using seemingly positive words, or vice versa. Analysis has shown that neutral sentiment has the lowest effectiveness in models (with low precision and recall). Irony can be classified as neutral when models fail to recognize its true tone, indicating that irony in such contexts is more challenging to detect. Llama 3.1, trained on large datasets that may include contexts where irony occurs, has the potential to better recognize subtle signals of irony, such as tone, sentence structure, or the use of specific words. However... Overinterpretation: Despite the potential benefits, LLM models may be prone to overinterpreting data. This could lead to the erroneous attribution of irony where none exists, as these models try to find subtle meanings or intentions, even if the text is straightforward and literal. With LLM models, there is a risk that they may attribute irony where it is absent, especially when they attempt to overinterpret simple statements as complex ones. This phenomenon may stem from the fact that LLMs are highly sensitive to context and may identify nuances that aren't actually present.
 
-
 ## Qualitive Comparison
 
 ```{r}
+set.seed(5)
 dfFlowS |>
     filter(Sentiment != avgSentiment) |>
   inner_join(dfSocial, join_by(textID == textID)) |>
@@ -282,17 +310,166 @@ dfFlowS |>
     textID %in% (
       dfFlowS |>
       filter(Sentiment != avgSentiment) |>
-        pull("textID")
+        pull("textID") |> sample(10)
     )
   ) |>
   select(Text, "StdModel" = Sentiment.x, avgResult) 
+
+set.seed(NULL)
 ```
 
-Here, the text should be analyzed, preferably using several methods: absolute classification into 3 cases, and adding a 4th category indicating those with more context.
+### Manual assesment of random cases
+::: {.panel-tabset}
+#### Case 1
 
+**haaaw..well i get out of class at 10:50..i hope i make it**
 
+- "haaaw..": This expression seems to convey a sense of weariness, frustration, or exasperation. It suggests that the speaker is feeling a bit overwhelmed or tired.
 
+- "well i get out of class at 10:50..": This part is neutral, simply stating a fact about when the speaker will finish class. There is no strong emotion attached to this statement.
 
+- "i hope i make it": This phrase expresses concern or uncertainty about whether the speaker will achieve something on time. The use of "hope" indicates a desire for a positive outcome, but also suggests some doubt or worry.
 
+Overall, the sentence carries a slightly anxious tone due to the concern about making it on time, combined with the weariness indicated at the beginning. However, there’s also a sense of determination to try and succeed.
 
+| Standard Model | Llama 3.1 | Subjective |
+|----------------|-----------|------------|
+| positive       | neutral (-.2)   | neutral    |
 
+#### Case 2
+
+**---- lol....where u headed to?**
+
+- "----": While the exact word is censored, it's often used to emphasize something casually or humorously, and without the context, it’s hard to determine the exact tone. However, in combination with "lol," it suggests a light-hearted or teasing vibe rather than something negative.
+
+- "lol": This abbreviation stands for "laugh out loud," indicating that the speaker finds something amusing or is in a good mood.
+
+- "where u headed to?": This is a neutral, casual question asking where the other person is going. It carries no strong emotional weight on its own.
+
+Overall, the sentence has a playful and friendly sentiment, with "lol" and the casual phrasing contributing to an informal, light-hearted tone.
+
+| Standard Model | Llama 3.1 | Subjective |
+|----------------|-----------|------------|
+| neutral       | positive (1)   | positive    |
+
+#### Case 3
+
+**Missed all your tweets again Joe, ---- that time difference!!! (UK) Dont 4get about your fave supporters in the UK!!! ----**
+
+"Missed all your tweets again Joe, ---- that time difference!!! (UK)": This part expresses frustration about the time difference, which is preventing the speaker from seeing Joe's tweets. The frustration is intensified by the use of strong language (represented by "----").
+
+"Dont 4get about your fave supporters in the UK!!!": This shifts to a more positive and playful tone, reminding Joe not to forget his UK supporters. The use of "fave" (short for favorite) adds a friendly and supportive sentiment.
+
+"----": This repetition of the strong language reinforces the frustration, but given the context, it seems more like a playful expression of annoyance rather than serious anger.
+
+Overall, the sentence reflects a mix of frustration due to the time difference, but it’s tempered with a supportive and playful tone, emphasizing the speaker’s dedication as a fan despite the inconvenience.
+
+| Standard Model | Llama 3.1 | Subjective |
+|----------------|-----------|------------|
+| neutral       | negative (-1)   | positive    |
+
+#### Case 4
+
+**http://twitpic.com/4ja8r - Tell me, how can you not love someone like this?**
+
+- "Tell me, how can you not love someone like this?": This rhetorical question strongly implies that the speaker finds the person in the image lovable or endearing. The tone is admiring and affectionate, suggesting a deep appreciation or fondness for the person in the picture.
+
+- Link to an image: Although we can’t see the image itself, the context suggests that it depicts someone the speaker cares about, further enhancing the positive sentiment.
+
+Overall, the sentence expresses a strong positive emotion, likely admiration, love, or deep affection toward the person in the image.
+
+| Standard Model | Llama 3.1 | Subjective |
+|----------------|-----------|------------|
+| neutral       |  positive (1)   | positive    |
+
+#### Case 5
+
+**Good morning. haha I just read that the swine flu probably not come`s from pigs at all, but from people! Poor pigs who got all the blame!**
+
+- "Good morning. haha": The greeting and the "haha" set a cheerful and casual tone, suggesting the speaker is in a good mood and finds the information amusing.
+
+- "I just read that the swine flu probably not come`s from pigs at all, but from people!": This part conveys surprise or interest in new information. The exclamation mark adds a sense of intrigue or mild shock.
+
+- "Poor pigs who got all the blame!": This expresses sympathy for the pigs, humorously pointing out the irony that they were wrongly blamed. The tone here is empathetic, but still playful.
+
+Overall, the sentence combines light-hearted amusement with a touch of sympathy, creating a generally positive and upbeat sentiment.
+
+| Standard Model | Llama 3.1 | Subjective |
+|----------------|-----------|------------|
+| neutral       |  positive (1)   | positive    |
+
+#### Case 6
+
+**Planing on going on a little ride on the mtb on monday may be in over to the tower...**
+
+- "Planning on going on a little ride on the mtb on monday": This part conveys anticipation and a sense of casual excitement about a planned activity. "MTB" likely refers to a mountain bike, suggesting an outdoor adventure.
+
+- "may be in over to the tower...": This adds to the positive tone, indicating that the speaker has a specific destination in mind, which likely holds some significance or interest.
+
+Overall, the sentence expresses a laid-back and positive sentiment, reflecting the speaker's enjoyment of outdoor activities and the anticipation of a pleasant bike ride.
+
+| Standard Model | Llama 3.1 | Subjective |
+|----------------|-----------|------------|
+| neutral       |  positive (1)   | positive    |
+
+#### Case 7
+
+**Kyle is Cody's wee bro!**
+
+- "Kyle is Cody's wee bro!": The use of "wee" (a term often used in Scottish or Irish dialects meaning "small" or "little") adds a warm, affectionate tone to the sentence. It indicates that Kyle is Cody's younger brother, and the phrasing suggests a close, caring relationship.
+
+Overall, the sentence conveys a positive, affectionate sentiment, reflecting a fondness or endearment towards Kyle as Cody's younger sibling.
+
+| Standard Model | Llama 3.1 | Subjective |
+|----------------|-----------|------------|
+| neutral       |  positive (1)   | positive    |
+
+#### Case 8
+
+**Not found: the thing I was looking for**
+
+- "Not found": This phrase indicates that something was missing or not located, which typically implies a sense of loss or failure.
+
+- "the thing I was looking for": This adds to the sense of disappointment, as the speaker was searching for something specific but did not succeed in finding it.
+
+Overall, the sentence conveys a tone of mild disappointment or frustration due to the inability to find what was being sought.
+
+| Standard Model | Llama 3.1 | Subjective |
+|----------------|-----------|------------|
+| neutral       |  negative (1)   | negative    |
+
+#### Case 9
+
+**Ha! I think I really have lost it. Time to get ready for work.**
+
+-   "Ha!": This interjection suggests a moment of realization or self-reflection. It could indicate amusement, irony, or even resignation.
+
+-   "I think I really have lost it.": This phrase suggests some level of frustration, confusion, or self-deprecation. The speaker might be acknowledging that they are feeling overwhelmed, disorganized, or out of sorts, which introduces a negative sentiment.
+
+-   "Time to get ready for work.": This part is more neutral, indicating a routine action that needs to be taken. It suggests a sense of acceptance or determination to move forward despite the earlier statement.
+
+Overall, the sentence reflects a moment of self-reflection where the speaker recognizes feeling a bit off but is still prepared to move on with their day.
+
+| Standard Model | Llama 3.1 | Subjective |
+|----------------|-----------|------------|
+| negative       | neutral (-.1)   | neutral    |
+
+#### Case 10
+
+**look up our youtube JessAndNicoleMusic, we are new, leave comments and subscribe thankyou x**
+
+- "look up our YouTube JessAndNicoleMusic": This is an enthusiastic invitation to check out their new YouTube channel. It shows eagerness to share their content with others.
+
+- "we are new": This provides context that the channel is just starting out, which can elicit a sense of support and encouragement from potential viewers.
+
+- "leave comments and subscribe": This is a polite and friendly call to action, asking viewers to engage with the content and support the channel.
+
+- "thank you x": The use of "thank you" combined with "x" (which often represents a kiss or affectionate gesture) adds a warm, appreciative tone, making the request feel personal and sincere.
+
+Overall, the sentence is aimed at generating interest and support for the new YouTube channel, conveyed in a positive and engaging manner.
+
+| Standard Model | Llama 3.1 | Subjective |
+|----------------|-----------|------------|
+| neutral       |  positive (1)   | positive    |
+
+::: 

@@ -5,7 +5,8 @@
  pacman::p_load(
    "httr2",
    "glue",
-   "tidyverse"
+   "tidyverse",
+   "svglite"
  )
  ollamar::list_models()
  
@@ -24,5 +25,15 @@
    # perform parallel request
    req_perform_parallel(reqs) |>
     sapply(ollamar::resp_process, "text")
+ }
+ 
+ ### Using SVG device for ggplot2
+ asSVG <- function(chart, width = 16, height = 9, scaling = 1, save = F, name = "") {
+   s <- svgstring(width, height, scaling = scaling)  # Start the SVG device
+   print(chart)          # Print the ggplot object to the SVG device
+   svg_content <- s()    # Capture the SVG content
+   invisible(dev.off())  # Close the SVG device
+   if (save) htmltools::save_html(htmltools::HTML(svg_content), name)
+   htmltools::HTML(svg_content)  # Return the SVG content as HTML
  }
  
